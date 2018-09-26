@@ -1451,7 +1451,18 @@ async def async_api_set_target_temp(hass, config, request, context, entity):
         entity.domain, climate.SERVICE_SET_TEMPERATURE, data, blocking=False,
         context=context)
 
-    return api_message(request)
+    context={
+   'properties': [
+              { "namespace": "Alexa.ThermostatController",
+                "name": "targetSetpoint",
+                "value":
+                  { "value": temp,
+                    "scale": entity.attributes[CONF_UNIT_OF_MEASUREMENT]
+                  }
+              }
+            ]
+     }   
+    return api_message(request, context = context)
 
 
 @HANDLERS.register(('Alexa.ThermostatController', 'AdjustTargetTemperature'))
