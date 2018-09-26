@@ -11,11 +11,11 @@ import socket
 import voluptuous as vol
 
 from homeassistant.components.media_player import (
-    SUPPORT_VOLUME_MUTE, SUPPORT_VOLUME_SET, SUPPORT_SELECT_SOURCE,
-    DOMAIN, PLATFORM_SCHEMA, MediaPlayerDevice)
+    DOMAIN, PLATFORM_SCHEMA, SUPPORT_SELECT_SOURCE, SUPPORT_VOLUME_MUTE,
+    SUPPORT_VOLUME_SET, MediaPlayerDevice)
 from homeassistant.const import (
-    STATE_ON, STATE_OFF, STATE_IDLE, STATE_PLAYING, STATE_UNKNOWN, CONF_HOST,
-    CONF_PORT, ATTR_ENTITY_ID)
+    ATTR_ENTITY_ID, CONF_HOST, CONF_PORT, STATE_IDLE, STATE_OFF, STATE_ON,
+    STATE_PLAYING, STATE_UNKNOWN)
 import homeassistant.helpers.config_validation as cv
 
 REQUIREMENTS = ['snapcast==2.0.8']
@@ -42,14 +42,14 @@ SERVICE_SCHEMA = vol.Schema({
 
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
     vol.Required(CONF_HOST): cv.string,
-    vol.Optional(CONF_PORT): cv.port
+    vol.Optional(CONF_PORT): cv.port,
 })
 
 
-# pylint: disable=unused-argument
 @asyncio.coroutine
-def async_setup_platform(hass, config, async_add_devices, discovery_info=None):
-    """Setup the Snapcast platform."""
+def async_setup_platform(hass, config, async_add_entities,
+                         discovery_info=None):
+    """Set up the Snapcast platform."""
     import snapcast.control
     from snapcast.control.server import CONTROL_PORT
     host = config.get(CONF_HOST)
@@ -68,34 +68,37 @@ def async_setup_platform(hass, config, async_add_devices, discovery_info=None):
                 yield from device.async_restore()
 
     hass.services.async_register(
-        DOMAIN, SERVICE_SNAPSHOT, _handle_service,
-        schema=SERVICE_SCHEMA)
+        DOMAIN, SERVICE_SNAPSHOT, _handle_service, schema=SERVICE_SCHEMA)
     hass.services.async_register(
-        DOMAIN, SERVICE_RESTORE, _handle_service,
-        schema=SERVICE_SCHEMA)
+        DOMAIN, SERVICE_RESTORE, _handle_service, schema=SERVICE_SCHEMA)
 
     try:
         server = yield from snapcast.control.create_server(
             hass.loop, host, port, reconnect=True)
     except socket.gaierror:
-        _LOGGER.error('Could not connect to Snapcast server at %s:%d',
+        _LOGGER.error("Could not connect to Snapcast server at %s:%d",
                       host, port)
-        return False
-    groups = [SnapcastGroupDevice(group) for group in server.groups]
-    clients = [SnapcastClientDevice(client) for client in server.clients]
+        return
+
+    # Note: Host part is needed, when using multiple snapservers
+    hpid = '{}:{}'.format(host, port)
+
+    groups = [SnapcastGroupDevice(group, hpid) for group in server.groups]
+    clients = [SnapcastClientDevice(client, hpid) for client in server.clients]
     devices = groups + clients
     hass.data[DATA_KEY] = devices
-    async_add_devices(devices)
-    return True
+    async_add_entities(devices)
 
 
 class SnapcastGroupDevice(MediaPlayerDevice):
     """Representation of a Snapcast group device."""
 
-    def __init__(self, group):
+    def __init__(self, group, uid_part):
         """Initialize the Snapcast group device."""
         group.set_callback(self.schedule_update_ha_state)
         self._group = group
+        self._uid = '{}{}_{}'.format(GROUP_PREFIX, uid_part,
+                                     self._group.identifier)
 
     @property
     def state(self):
@@ -105,6 +108,11 @@ class SnapcastGroupDevice(MediaPlayerDevice):
             'playing': STATE_PLAYING,
             'unknown': STATE_UNKNOWN,
         }.get(self._group.stream_status, STATE_UNKNOWN)
+
+    @property
+    def unique_id(self):
+        """Return the ID of snapcast group."""
+        return self._uid
 
     @property
     def name(self):
@@ -182,10 +190,21 @@ class SnapcastGroupDevice(MediaPlayerDevice):
 class SnapcastClientDevice(MediaPlayerDevice):
     """Representation of a Snapcast client device."""
 
-    def __init__(self, client):
+    def __init__(self, client, uid_part):
         """Initialize the Snapcast client device."""
         client.set_callback(self.schedule_update_ha_state)
         self._client = client
+        self._uid = '{}{}_{}'.format(CLIENT_PREFIX, uid_part,
+                                     self._client.identifier)
+
+    @property
+    def unique_id(self):
+        """
+        Return the ID of this snapcast client.
+
+        Note: Host part is needed, when using multiple snapservers
+        """
+        return self._uid
 
     @property
     def name(self):

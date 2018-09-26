@@ -4,26 +4,26 @@ Support for interfacing to the Logitech SqueezeBox API.
 For more details about this platform, please refer to the documentation at
 https://home-assistant.io/components/media_player.squeezebox/
 """
-import logging
 import asyncio
-import urllib.parse
 import json
+import logging
+import urllib.parse
+
 import aiohttp
 import async_timeout
-
 import voluptuous as vol
 
 from homeassistant.components.media_player import (
-    ATTR_MEDIA_ENQUEUE, SUPPORT_PLAY_MEDIA,
-    MEDIA_TYPE_MUSIC, SUPPORT_NEXT_TRACK, SUPPORT_PAUSE, PLATFORM_SCHEMA,
-    SUPPORT_PREVIOUS_TRACK, SUPPORT_SEEK, SUPPORT_TURN_OFF, SUPPORT_TURN_ON,
-    SUPPORT_VOLUME_MUTE, SUPPORT_VOLUME_SET, SUPPORT_PLAY, MediaPlayerDevice,
-    MEDIA_PLAYER_SCHEMA, DOMAIN, SUPPORT_SHUFFLE_SET, SUPPORT_CLEAR_PLAYLIST)
+    ATTR_MEDIA_ENQUEUE, DOMAIN, MEDIA_PLAYER_SCHEMA, MEDIA_TYPE_MUSIC,
+    PLATFORM_SCHEMA, SUPPORT_CLEAR_PLAYLIST, SUPPORT_NEXT_TRACK, SUPPORT_PAUSE,
+    SUPPORT_PLAY, SUPPORT_PLAY_MEDIA, SUPPORT_PREVIOUS_TRACK, SUPPORT_SEEK,
+    SUPPORT_SHUFFLE_SET, SUPPORT_TURN_OFF, SUPPORT_TURN_ON,
+    SUPPORT_VOLUME_MUTE, SUPPORT_VOLUME_SET, MediaPlayerDevice)
 from homeassistant.const import (
-    CONF_HOST, CONF_PASSWORD, CONF_USERNAME, STATE_IDLE, STATE_OFF,
-    STATE_PAUSED, STATE_PLAYING, STATE_UNKNOWN, CONF_PORT, ATTR_COMMAND)
-import homeassistant.helpers.config_validation as cv
+    ATTR_COMMAND, CONF_HOST, CONF_PASSWORD, CONF_PORT, CONF_USERNAME,
+    STATE_IDLE, STATE_OFF, STATE_PAUSED, STATE_PLAYING, STATE_UNKNOWN)
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+import homeassistant.helpers.config_validation as cv
 from homeassistant.util.dt import utcnow
 
 _LOGGER = logging.getLogger(__name__)
@@ -45,7 +45,9 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
 
 SERVICE_CALL_METHOD = 'squeezebox_call_method'
 
-DATA_SQUEEZEBOX = 'squeexebox'
+DATA_SQUEEZEBOX = 'squeezebox'
+
+KNOWN_SERVERS = 'squeezebox_known_servers'
 
 ATTR_PARAMETERS = 'parameters'
 
@@ -63,9 +65,14 @@ SERVICE_TO_METHOD = {
 
 
 @asyncio.coroutine
-def async_setup_platform(hass, config, async_add_devices, discovery_info=None):
+def async_setup_platform(hass, config, async_add_entities,
+                         discovery_info=None):
     """Set up the squeezebox platform."""
     import socket
+
+    known_servers = hass.data.get(KNOWN_SERVERS)
+    if known_servers is None:
+        hass.data[KNOWN_SERVERS] = known_servers = set()
 
     if DATA_SQUEEZEBOX not in hass.data:
         hass.data[DATA_SQUEEZEBOX] = []
@@ -92,13 +99,17 @@ def async_setup_platform(hass, config, async_add_devices, discovery_info=None):
             "Could not communicate with %s:%d: %s", host, port, error)
         return False
 
+    if ipaddr in known_servers:
+        return
+
+    known_servers.add(ipaddr)
     _LOGGER.debug("Creating LMS object for %s", ipaddr)
     lms = LogitechMediaServer(hass, host, port, username, password)
 
     players = yield from lms.create_players()
 
     hass.data[DATA_SQUEEZEBOX].extend(players)
-    async_add_devices(players)
+    async_add_entities(players)
 
     @asyncio.coroutine
     def async_service_handler(service):
@@ -133,7 +144,7 @@ def async_setup_platform(hass, config, async_add_devices, discovery_info=None):
     return True
 
 
-class LogitechMediaServer(object):
+class LogitechMediaServer:
     """Representation of a Logitech media server."""
 
     def __init__(self, hass, host, port, username, password):
@@ -220,7 +231,7 @@ class SqueezeBoxDevice(MediaPlayerDevice):
 
     @property
     def unique_id(self):
-        """Return an unique ID."""
+        """Return a unique ID."""
         return self._id
 
     @property
@@ -256,6 +267,8 @@ class SqueezeBoxDevice(MediaPlayerDevice):
         if response is False:
             return
 
+        last_media_position = self.media_position
+
         self._status = {}
 
         try:
@@ -268,7 +281,11 @@ class SqueezeBoxDevice(MediaPlayerDevice):
             pass
 
         self._status.update(response)
-        self._last_update = utcnow()
+
+        if self.media_position != last_media_position:
+            _LOGGER.debug('Media position updated for %s: %s',
+                          self, self.media_position)
+            self._last_update = utcnow()
 
     @property
     def volume_level(self):
@@ -473,7 +490,7 @@ class SqueezeBoxDevice(MediaPlayerDevice):
         return self.async_query('playlist', 'play', media_id)
 
     def _add_uri_to_playlist(self, media_id):
-        """Add a items to the existing playlist."""
+        """Add an item to the existing playlist."""
         return self.async_query('playlist', 'add', media_id)
 
     def async_set_shuffle(self, shuffle):
@@ -494,5 +511,5 @@ class SqueezeBoxDevice(MediaPlayerDevice):
         all_params = [command]
         if parameters:
             for parameter in parameters:
-                all_params.append(urllib.parse.quote(parameter, safe=':='))
+                all_params.append(urllib.parse.quote(parameter, safe=':=/?'))
         return self.async_query(*all_params)

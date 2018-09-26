@@ -26,6 +26,8 @@ CONF_HOUR = 'hour'
 CONF_DAY = 'day'
 CONF_MANUAL = 'manual'
 
+ICON = 'mdi:speedometer'
+
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
     vol.Optional(CONF_SECOND, default=[0]):
         vol.All(cv.ensure_list, [vol.All(vol.Coerce(int), vol.Range(0, 59))]),
@@ -39,11 +41,11 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
 })
 
 
-def setup_platform(hass, config, add_devices, discovery_info=None):
+def setup_platform(hass, config, add_entities, discovery_info=None):
     """Set up the Fast.com sensor."""
     data = SpeedtestData(hass, config)
     sensor = SpeedtestSensor(data)
-    add_devices([sensor])
+    add_entities([sensor])
 
     def update(call=None):
         """Update service for manual updates."""
@@ -94,8 +96,13 @@ class SpeedtestSensor(Entity):
             return
         self._state = state.state
 
+    @property
+    def icon(self):
+        """Return icon."""
+        return ICON
 
-class SpeedtestData(object):
+
+class SpeedtestData:
     """Get the latest data from fast.com."""
 
     def __init__(self, hass, config):

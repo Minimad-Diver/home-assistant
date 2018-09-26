@@ -29,6 +29,8 @@ def test_constructor_loads_info_from_constant():
             'user_pool_id': 'test-user_pool_id',
             'region': 'test-region',
             'relayer': 'test-relayer',
+            'google_actions_sync_url': 'test-google_actions_sync_url',
+            'subscription_info_url': 'test-subscription-info-url'
         }
     }), patch('homeassistant.components.cloud.Cloud._fetch_jwt_keyset',
               return_value=mock_coro(True)):
@@ -43,6 +45,8 @@ def test_constructor_loads_info_from_constant():
     assert cl.user_pool_id == 'test-user_pool_id'
     assert cl.region == 'test-region'
     assert cl.relayer == 'test-relayer'
+    assert cl.google_actions_sync_url == 'test-google_actions_sync_url'
+    assert cl.subscription_info_url == 'test-subscription-info-url'
 
 
 @asyncio.coroutine
@@ -71,8 +75,7 @@ def test_constructor_loads_info_from_config():
     assert cl.relayer == 'test-relayer'
 
 
-@asyncio.coroutine
-def test_initialize_loads_info(mock_os, hass):
+async def test_initialize_loads_info(mock_os, hass):
     """Test initialize will load info from config file."""
     mock_os.path.isfile.return_value = True
     mopen = mock_open(read_data=json.dumps({
@@ -86,8 +89,10 @@ def test_initialize_loads_info(mock_os, hass):
     cl.iot.connect.return_value = mock_coro()
 
     with patch('homeassistant.components.cloud.open', mopen, create=True), \
+            patch('homeassistant.components.cloud.Cloud._fetch_jwt_keyset',
+                  return_value=mock_coro(True)), \
             patch('homeassistant.components.cloud.Cloud._decode_claims'):
-        cl._start_cloud(None)
+        await cl.async_start(None)
 
     assert cl.id_token == 'test-id-token'
     assert cl.access_token == 'test-access-token'
@@ -136,9 +141,9 @@ def test_write_user_info():
 
 
 @asyncio.coroutine
-def test_subscription_expired():
+def test_subscription_expired(hass):
     """Test subscription being expired."""
-    cl = cloud.Cloud(None, cloud.MODE_DEV, None, None)
+    cl = cloud.Cloud(hass, cloud.MODE_DEV, None, None)
     token_val = {
         'custom:sub-exp': '2017-11-13'
     }
@@ -149,9 +154,9 @@ def test_subscription_expired():
 
 
 @asyncio.coroutine
-def test_subscription_not_expired():
+def test_subscription_not_expired(hass):
     """Test subscription not being expired."""
-    cl = cloud.Cloud(None, cloud.MODE_DEV, None, None)
+    cl = cloud.Cloud(hass, cloud.MODE_DEV, None, None)
     token_val = {
         'custom:sub-exp': '2017-11-13'
     }

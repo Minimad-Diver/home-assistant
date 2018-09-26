@@ -38,19 +38,14 @@ SWITCH_SCHEMA = vol.Schema({
     vol.Optional(ATTR_ENTITY_ID): cv.entity_ids
 })
 
-SWITCH_SCHEMA = vol.All(
-    cv.deprecated(ATTR_ENTITY_ID),
-    SWITCH_SCHEMA,
-)
-
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
     vol.Required(CONF_SWITCHES): vol.Schema({cv.slug: SWITCH_SCHEMA}),
 })
 
 
 @asyncio.coroutine
-# pylint: disable=unused-argument
-def async_setup_platform(hass, config, async_add_devices, discovery_info=None):
+def async_setup_platform(hass, config, async_add_entities,
+                         discovery_info=None):
     """Set up the Template switch."""
     switches = []
 
@@ -83,7 +78,7 @@ def async_setup_platform(hass, config, async_add_devices, discovery_info=None):
         _LOGGER.error("No switches added")
         return False
 
-    async_add_devices(switches)
+    async_add_entities(switches)
     return True
 
 

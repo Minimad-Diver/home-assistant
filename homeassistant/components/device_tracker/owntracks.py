@@ -12,7 +12,7 @@ from collections import defaultdict
 
 import voluptuous as vol
 
-import homeassistant.components.mqtt as mqtt
+from homeassistant.components import mqtt
 import homeassistant.helpers.config_validation as cv
 from homeassistant.components import zone as zone_comp
 from homeassistant.components.device_tracker import (
@@ -143,6 +143,8 @@ def _parse_see_args(message, subscribe_topic):
         kwargs['attributes']['tid'] = message['tid']
     if 'addr' in message:
         kwargs['attributes']['address'] = message['addr']
+    if 'cog' in message:
+        kwargs['attributes']['course'] = message['cog']
     if 't' in message:
         if message['t'] == 'c':
             kwargs['attributes'][ATTR_SOURCE_TYPE] = SOURCE_TYPE_GPS
